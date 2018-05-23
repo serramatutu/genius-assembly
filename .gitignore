@@ -1,0 +1,20 @@
+
+# Created by https://www.gitignore.io/api/assembler,visualstudiocode
+
+### Assembler ###
+*.[sS]
+*.bc
+
+### VisualStudioCode ###
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history
+
+/bin
+*.exe
+
+
+# End of https://www.gitignore.io/api/assembler,visualstudiocode
