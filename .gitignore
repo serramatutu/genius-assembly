@@ -15,6 +15,9 @@
 
 /bin
 *.exe
+*.res
+*.obj
+*.
 
 
 # End of https://www.gitignore.io/api/assembler,visualstudiocode
