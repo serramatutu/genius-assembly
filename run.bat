@@ -48,7 +48,6 @@ goto TheEnd
 :TheEnd
 
 cd bin\
-cls
 main.exe
 cd ..\..\
 

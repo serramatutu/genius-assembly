@@ -7,7 +7,7 @@
 
 ;           Assembler specific instructions for 32 bit ASM code
 
-      .386                   ; minimum processor needed for 32 bit
+      .586                   ; minimum processor needed for 32 bit
       .model flat, stdcall   ; FLAT memory model & STDCALL calling
       option casemap :none   ; set code to case sensitive
 
@@ -91,6 +91,10 @@
         WinMain PROTO :DWORD,:DWORD,:DWORD,:DWORD
         WndProc PROTO :DWORD,:DWORD,:DWORD,:DWORD
         TopXY PROTO   :DWORD,:DWORD
+        GetSpriteFromMousePos PROTO
+        RestartGame PROTO
+        ShowColors PROTO
+        Random PROTO range:DWORD  
 
 ; #########################################################################
 
@@ -102,13 +106,22 @@
 ; ------------------------------------------------------------------------
 
     .data
+        ; TODO: Tirar daqui
+        buffer        db 256 dup(0)
+
+        ; aleatorização de valores
+        prng_x        dd 0
+        prng_a        dd 180574328
+
         szDisplayName db "Genius",0
         CommandLine   dd 0
         hWnd          dd 0
         hInstance     dd 0
 
-        colors db 256 dup(0) ; cores do jogo
-        acceptClick db 0     ; se é para aceitar um click
+        colors dd 256 dup(0) ; cores do jogo
+        currentIndex dd 0 ; indice no vetor de cores
+
+        acceptClick db 1     ; se é para aceitar um click
         
         currentSprite dd 0
 
@@ -119,11 +132,16 @@
 
         WINDOW_WIDTH equ 520
         WINDOW_HEIGHT equ 542
+
+        PC_DELAY_TIME equ 500
+        MOUSE_DELAY_TIME equ 75
     
     .data?
         txt         DB  ?
         colors_spriteset dd ?
-        position POINT<>
+        mousepos POINT<>
+
+        threadId DWORD ?
 
 ; #########################################################################
 
@@ -232,6 +250,11 @@ WinMain proc hInst     :DWORD,
         invoke UpdateWindow,hWnd                  ; update the display
 
       ;===================================
+      ; Aleatorizar o vetor de cores
+      ;===================================
+        invoke RestartGame
+
+      ;===================================
       ; Loop until PostQuitMessage is sent
       ;===================================
 
@@ -287,21 +310,24 @@ WndProc proc hWin   :DWORD,
 
     ;====== end menu commands ======
     .elseif uMsg == WM_LBUTTONDOWN
-        mov al, acceptClick
-        cmp al, 0 ; se for 0, não está aceitando click
-        je  click_end
+        .if acceptClick != 0 ; apenas se estiver aceitando click
             mov	eax, lParam
             and	eax, 0000FFFFh
-            mov	position.x, eax
+            mov	mousepos.x, eax
             mov	eax, lParam
             shr	eax, 16
             and	eax, 0000FFFFh
-            mov	position.y, eax
-        click_end:
+            mov	mousepos.y, eax
 
-        ; invoke InvalidateRect,hWnd,NULL,TRUE
+            invoke GetSpriteFromMousePos ; obtém a imagem atual
+            mov currentSprite, eax ; sprite atual é a correspondente ao click
 
-    .elseif uMsg == WM_LBUTTONUP	 
+            invoke InvalidateRect,hWnd,NULL,TRUE
+        .endif
+    .elseif uMsg == WM_LBUTTONUP
+        invoke Sleep, MOUSE_DELAY_TIME
+        mov currentSprite, 0
+        invoke InvalidateRect,hWnd,NULL,TRUE
 
     .elseif uMsg == WM_PAINT
 
@@ -327,7 +353,7 @@ WndProc proc hWin   :DWORD,
     .elseif uMsg == WM_CREATE
     ; --------------------------------------------------------------------
     ; This message is sent to WndProc during the CreateWindowEx function
-    ; call and is processed before it returns. This is used as a position
+    ; call and is processed before it returns. This is used as a mousepos
     ; to start other items such as controls. IMPORTANT, the handle for the
     ; CreateWindowEx call in the WinMain does not yet exist so the HANDLE
     ; passed to the WndProc [ hWin ] must be used here for any controls
@@ -391,6 +417,77 @@ TopXY proc wDim:DWORD, sDim:DWORD
     return sDim
 
 TopXY endp
+
+; ########################################################################
+
+GetSpriteFromMousePos proc
+    mov eax, 1
+
+    ; x check
+    mov ebx, mousepos.x
+    .if ebx >= 250
+        inc eax
+    .endif
+
+    ; y check
+    mov ebx, mousepos.y
+    .if ebx > 250
+        add eax, 2
+    .endif
+    ret
+
+GetSpriteFromMousePos endp
+
+; ########################################################################
+
+RestartGame proc
+    mov currentIndex, 0 ; reinicia a posição no vetor de cores
+
+    mov ebx, 0 ; ebx contém a posição atual de randomização
+
+    .while ebx < 256 ; randomiza cada um dos números
+        invoke Random, 3 ; coloca em eax um valor aleatório de 0 a 3
+        inc eax ; eax contém agora um valor aleatório de 1 a 4
+        
+        mov colors[ebx], eax
+
+        inc ebx
+    .endw
+    ret
+RestartGame endp
+
+; ########################################################################
+
+ShowColors proc
+    inc currentIndex
+    mov eax ; indice atual
+
+    .while eax < currentIndex
+        mov ebx, colors[eax]
+        mov currentColor, colors[eax]
+
+        invoke InvalidateRect,hWnd,NULL,TRUE
+        invoke Sleep, PC_DELAY_TIME
+
+        inc eax
+    .endw
+
+    ret
+ShowColors endp
+
+; ########################################################################
+
+Random proc range:DWORD   
+    rdtsc
+    adc eax, edx
+    adc eax, prng_x
+    mul prng_a
+    adc eax, edx
+    mov prng_x, eax
+    mul range
+    mov eax, edx
+    ret
+Random endp
 
 ; ########################################################################
 
