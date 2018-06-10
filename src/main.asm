@@ -120,8 +120,9 @@
 
         colors dd 256 dup(0) ; cores do jogo
         currentIndex dd 0 ; indice no vetor de cores
+        currentColor dd 0 ; usado para desenho
 
-        acceptClick db 1     ; se é para aceitar um click
+        acceptClick db 0     ; se é para aceitar um click
         
         currentSprite dd 0
 
@@ -259,12 +260,15 @@ WinMain proc hInst     :DWORD,
       ;===================================
 
     StartLoop:
-      invoke GetMessage,ADDR msg,NULL,0,0         ; get each message
-      cmp eax, 0                                  ; exit if GetMessage()
-      je ExitLoop                                 ; returns zero
-      invoke TranslateMessage, ADDR msg           ; translate it
-      invoke DispatchMessage,  ADDR msg           ; send it to message proc
-      jmp StartLoop
+        invoke GetMessage,ADDR msg,NULL,0,0         ; get each message
+        cmp eax, 0                                  ; exit if GetMessage()
+        je ExitLoop                                 ; returns zero
+        invoke TranslateMessage, ADDR msg           ; translate it
+        invoke DispatchMessage,  ADDR msg           ; send it to message proc
+        cmp acceptClick, 0
+        jne StartLoop
+        invoke ShowColors
+        jmp StartLoop
     ExitLoop:
 
       return msg.wParam
@@ -460,17 +464,20 @@ RestartGame endp
 
 ShowColors proc
     inc currentIndex
-    mov eax ; indice atual
+    mov ecx, 0 ; indice atual
 
-    .while eax < currentIndex
-        mov ebx, colors[eax]
-        mov currentColor, colors[eax]
+    .while ecx < currentIndex
+        mov ebx, colors[ecx]
+        mov currentSprite, 1
 
         invoke InvalidateRect,hWnd,NULL,TRUE
         invoke Sleep, PC_DELAY_TIME
 
-        inc eax
+        inc ecx
     .endw
+
+    mov acceptClick, 1
+    mov currentSprite, 0
 
     ret
 ShowColors endp
