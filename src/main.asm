@@ -468,7 +468,7 @@ ShowColors proc
 
     .while ecx < currentIndex
         mov ebx, colors[ecx]
-        mov currentSprite, 1
+        mov currentSprite, ebx
 
         invoke InvalidateRect,hWnd,NULL,TRUE
         invoke Sleep, PC_DELAY_TIME
