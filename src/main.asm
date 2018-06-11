@@ -106,6 +106,8 @@
 ; ------------------------------------------------------------------------
 
     .data
+        WM_FINISH     equ WM_USER+100h
+
         ; TODO: Tirar daqui
         buffer        db 256 dup(0)
 
@@ -119,8 +121,9 @@
         hInstance     dd 0
 
         colors dd 256 dup(0) ; cores do jogo
-        currentIndex dd 0 ; indice no vetor de cores
-        currentColor dd 0 ; usado para desenho
+        currentIndex  dd 0 ; indice no vetor de cores
+        currentColor  dd 0 ; usado para desenho
+        showingColors dd 1
 
         acceptClick db 0     ; se é para aceitar um click
         
@@ -141,8 +144,11 @@
         txt         DB  ?
         colors_spriteset dd ?
         mousepos POINT<>
-
-        threadId DWORD ?
+        
+        ; Threads
+        ThreadID      DWORD   ?
+        hEventStart   HANDLE  ?
+        dwExitCode    LPDWORD ?   
 
 ; #########################################################################
 
@@ -250,6 +256,12 @@ WinMain proc hInst     :DWORD,
         invoke ShowWindow,hWnd,SW_SHOWNORMAL      ; display the window
         invoke UpdateWindow,hWnd                  ; update the display
 
+        ; Inicializa a thread
+        invoke CreateEvent, NULL, FALSE, FALSE, NULL
+        mov    hEventStart, eax
+        mov    eax, OFFSET ThreadProc
+        invoke CreateThread, NULL, NULL, eax, NULL, NORMAL_PRIORITY_CLASS, ADDR ThreadID
+
       ;===================================
       ; Aleatorizar o vetor de cores
       ;===================================
@@ -265,9 +277,6 @@ WinMain proc hInst     :DWORD,
         je ExitLoop                                 ; returns zero
         invoke TranslateMessage, ADDR msg           ; translate it
         invoke DispatchMessage,  ADDR msg           ; send it to message proc
-        cmp acceptClick, 0
-        jne StartLoop
-        invoke ShowColors
         jmp StartLoop
     ExitLoop:
 
@@ -292,6 +301,8 @@ WndProc proc hWin   :DWORD,
 ; in the two parameters, wParam & lParam. The range of additional data that
 ; can be passed to an application is determined by the message.
 ; -------------------------------------------------------------------------
+
+     
 
     .if uMsg == WM_COMMAND
     ;----------------------------------------------------------------------
@@ -328,10 +339,15 @@ WndProc proc hWin   :DWORD,
 
             invoke InvalidateRect,hWnd,NULL,TRUE
         .endif
+
     .elseif uMsg == WM_LBUTTONUP
         invoke Sleep, MOUSE_DELAY_TIME
         mov currentSprite, 0
         invoke InvalidateRect,hWnd,NULL,TRUE
+
+    .elseif uMsg == WM_FINISH
+        ; Renderiza a tela
+        invoke  InvalidateRect, hWnd, NULL, TRUE
 
     .elseif uMsg == WM_PAINT
 
@@ -377,6 +393,8 @@ WndProc proc hWin   :DWORD,
     ; exits the WndProc procedure without passing this message to the
     ; default window processing done by the operating system.
     ; -------------------------------------------------------------------
+        invoke PostQuitMessage, NULL
+        return 0
 
     .elseif uMsg == WM_DESTROY
     ; ----------------------------------------------------------------
@@ -457,6 +475,9 @@ RestartGame proc
 
         inc ebx
     .endw
+
+    invoke ShowColors
+
     ret
 RestartGame endp
 
@@ -466,18 +487,19 @@ ShowColors proc
     inc currentIndex
     mov ecx, 0 ; indice atual
 
-    .while ecx < currentIndex
-        mov ebx, colors[ecx]
-        mov currentSprite, ebx
+    mov showingColors, 1
+    mov acceptClick, 0
 
-        invoke InvalidateRect,hWnd,NULL,TRUE
-        invoke Sleep, PC_DELAY_TIME
+    ;.while ecx < currentIndex
+    ;    mov ebx, colors[ecx]
+    ;    mov currentSprite, ebx
 
-        inc ecx
-    .endw
+    ;    invoke InvalidateRect,hWnd,NULL,TRUE
+    ;    invoke Sleep, PC_DELAY_TIME
 
-    mov acceptClick, 1
-    mov currentSprite, 0
+    ;    inc ecx
+    ;.endw
+
 
     ret
 ShowColors endp
@@ -495,6 +517,35 @@ Random proc range:DWORD
     mov eax, edx
     ret
 Random endp
+
+; ########################################################################
+
+ThreadProc proc USES ecx PARAM:dword
+
+    .if showingColors != 0 ; se estiver mostrando o desafio
+        invoke WaitForSingleObject, hEventStart, 500
+        .if eax == WAIT_TIMEOUT
+            ;invoke MessageBox,hWnd,NULL,ADDR szDisplayName,MB_OK
+            .if ecx < currentIndex
+                mov ebx, colors[ecx]
+                mov currentSprite, ebx
+
+                inc ecx
+            .ELSE
+                mov showingColors, 0
+                mov acceptClick, 1
+                mov currentSprite, 0
+            .endif
+        .endif
+    ;.ELSE
+
+    .endif
+
+    invoke  SendMessage, hWnd, WM_FINISH, NULL, NULL
+
+    jmp ThreadProc
+    ret
+ThreadProc endp
 
 ; ########################################################################
 
