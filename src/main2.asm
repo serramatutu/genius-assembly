@@ -271,7 +271,7 @@ WndProc proc hWin   :DWORD,
         imul ebx, 500
         
 
-        invoke BitBlt, hdc, 0, 0, SPRITE_WIDTH, SPRITE_HEIGHT, hTmpImgDC, ebx, 0, SRCCOPY
+        invoke BitBlt, hdc, 0, 0, SPRITE_WIDTH, SPRITE_HEIGHT, hTmpImgDC, ebx, 0, MERGECOPY
         invoke DeleteDC, hTmpImgDC
 
         invoke EndPaint,hWin,ADDR Ps
@@ -396,17 +396,17 @@ Random endp
 
 ; ########################################################################
 
-ThreadProc proc USES ebx param:DWORD
+ThreadProc proc USES edx param:DWORD
     .if acceptClick == 0
         invoke WaitForSingleObject, hEventStart, 200
         .if eax == WAIT_TIMEOUT
             ;invoke MessageBox,hWnd,NULL,ADDR szDisplayName,MB_OK
             mov ecx, drawingIndex
-            .if ecx < 256
-                mov ebx, colors[ecx]
-                mov currentSprite, ebx
-                ;add ebx, 48
-                ;mov szDisplayName[0], bl
+            .if ecx < currentIndex
+                mov edx, colors[ecx]
+                mov currentSprite, edx
+                ;add edx, 48
+                ;mov szDisplayName[0], dl
                 ;invoke MessageBox,hWnd,NULL,ADDR szDisplayName,MB_OK
                 ;invoke InvalidateRect, hWnd, NULL, TRUE
                 invoke SendMessage, hWnd, WM_FINISH, NULL, NULL
@@ -426,10 +426,20 @@ ThreadProc proc USES ebx param:DWORD
         invoke WaitForSingleObject, hEventStart, 100
         .if eax == WAIT_TIMEOUT
             .if clickHandled == 0
-                mov ebx, currentIndex
-                dec ebx
-                .if drawingIndex < ebx
-                .ELSE
+                mov edx, currentIndex
+                dec edx
+                .if drawingIndex < edx
+                    mov ecx, colors[edx]
+                    .if clickedSprite != ecx
+                        add ecx, 48
+                        mov szDisplayName[0], 48
+                        ;invoke MessageBox,hWnd,NULL,ADDR szDisplayName,MB_OK
+                        invoke MessageBox, hWnd, ADDR szLoseMsg, ADDR szDisplayName, MB_OK
+                        invoke ExitProcess, 0
+                    .ELSE
+                        inc drawingIndex
+                        mov clickHandled, 1
+                    .endif
                 .endif
             .endif
             ;invoke MessageBox,hWnd,NULL,ADDR szDisplayName,MB_OK
@@ -439,8 +449,6 @@ ThreadProc proc USES ebx param:DWORD
     ;invoke SendMessage, hWnd, WM_FINISH, NULL, NULL
 
     jmp ThreadProc
-    
-            invoke MessageBox,hWnd,NULL,ADDR szDisplayName,MB_OK
     ret
 ThreadProc endp
 
