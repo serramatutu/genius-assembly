@@ -47,7 +47,6 @@
 
 ; #########################################################################
 
-
         WinMain PROTO :DWORD,:DWORD,:DWORD,:DWORD
         WndProc PROTO :DWORD,:DWORD,:DWORD,:DWORD
         TopXY PROTO   :DWORD,:DWORD
@@ -58,9 +57,10 @@
 
 ; #########################################################################
 
-    .data
+    .const    
         WM_FINISH     equ WM_USER+100h
 
+    .data
         ; TODO: Tirar daqui
         buffer        db 256 dup(0)
 
@@ -69,18 +69,20 @@
         prng_a        dd 180574328
 
         szDisplayName db "Genius",0
+        szLoseMsg     db "Vc perdeu, tente novamente",0
         CommandLine   dd 0
         hWnd          dd 0
         hInstance     dd 0
 
         colors dd 256 dup(0) ; cores do jogo
-        currentIndex  dd 1 ; indice no vetor de cores
-        currentColor  dd 0 ; usado para desenho
-        showingColors dd 1
+        currentIndex dd 0 ; indice no vetor de cores
+        drawingIndex dd 0
 
-        acceptClick db 0     ; se é para aceitar um click
+        acceptClick db 1     ; se é para aceitar um click
+        clickHandled db 1
         
         currentSprite dd 0
+        clickedSprite dd 0
 
         SPRITESHEET_RESOURCE_ID equ 1
 
@@ -97,11 +99,12 @@
         txt         DB  ?
         colors_spriteset dd ?
         mousepos POINT<>
+
         
         ; Threads
         ThreadID      DWORD   ?
         hEventStart   HANDLE  ?
-        dwExitCode    LPDWORD ?   
+        dwExitCode    LPDWORD ?  
 
 ; #########################################################################
 
@@ -195,33 +198,19 @@ WinMain proc hInst     :DWORD,
         invoke ShowWindow,hWnd,SW_SHOWNORMAL      ; display the window
         invoke UpdateWindow,hWnd                  ; update the display
 
-        mov currentIndex, 1
-        mov ecx, 0
-
-        ; Inicializa a thread
-        invoke CreateEvent, NULL, FALSE, FALSE, NULL
-        mov    hEventStart, eax
-        mov    eax, OFFSET ThreadProc
-        invoke CreateThread, NULL, NULL, eax, NULL, NORMAL_PRIORITY_CLASS, ADDR ThreadID
-
-      ;===================================
-      ; Aleatorizar o vetor de cores
-      ;===================================
-        invoke RestartGame
-
       ;===================================
       ; Loop until PostQuitMessage is sent
       ;===================================
 
     StartLoop:
-        invoke GetMessage,ADDR msg,NULL,0,0         ; get each message
-        cmp eax, 0                                  ; exit if GetMessage()
-        je ExitLoop                                 ; returns zero
-        invoke TranslateMessage, ADDR msg           ; translate it
-        invoke DispatchMessage,  ADDR msg           ; send it to message proc
-        jmp StartLoop
+      invoke GetMessage,ADDR msg,NULL,0,0         ; get each message
+      cmp eax, 0                                  ; exit if GetMessage()
+      je ExitLoop                                 ; returns zero
+      invoke TranslateMessage, ADDR msg           ; translate it
+      invoke DispatchMessage,  ADDR msg           ; send it to message proc
+      jmp StartLoop
     ExitLoop:
-    
+
       return msg.wParam
 
 WinMain endp
@@ -235,7 +224,7 @@ WndProc proc hWin   :DWORD,
 
     LOCAL hdc       :DWORD
     LOCAL Ps        :PAINTSTRUCT
-    LOCAL hTmpImgDC :HDC     
+    LOCAL hTmpImgDC :HDC
 
     .if uMsg == WM_LBUTTONDOWN
         .if acceptClick != 0 ; apenas se estiver aceitando click
@@ -249,6 +238,8 @@ WndProc proc hWin   :DWORD,
 
             invoke GetSpriteFromMousePos ; obtém a imagem atual
             mov currentSprite, eax ; sprite atual é a correspondente ao click
+            mov clickedSprite, eax
+            mov clickHandled, 0
 
             invoke InvalidateRect,hWnd,NULL,TRUE
         .endif
@@ -259,10 +250,10 @@ WndProc proc hWin   :DWORD,
         invoke InvalidateRect,hWnd,NULL,TRUE
 
     .elseif uMsg == WM_FINISH
-        ; Renderiza a tela
-        invoke  InvalidateRect, hWnd, NULL, TRUE
+        invoke InvalidateRect, hWnd, NULL, TRUE
 
     .elseif uMsg == WM_PAINT
+
         invoke BeginPaint,hWin,ADDR Ps
         mov    hdc, eax
 
@@ -273,9 +264,14 @@ WndProc proc hWin   :DWORD,
         
         ; escolhe a coordenada x da sprite
         mov ebx, currentSprite
+        ;add ebx, 48
+        ;mov szDisplayName[0], bl
+        ;invoke MessageBox,hWnd,NULL,ADDR szDisplayName,MB_OK
+        ;mov ebx, currentSprite
         imul ebx, 500
+        
 
-        invoke BitBlt, hdc, 0, 0, SPRITE_WIDTH, SPRITE_HEIGHT, hTmpImgDC, ebx, 0, MERGECOPY
+        invoke BitBlt, hdc, 0, 0, SPRITE_WIDTH, SPRITE_HEIGHT, hTmpImgDC, ebx, 0, SRCCOPY
         invoke DeleteDC, hTmpImgDC
 
         invoke EndPaint,hWin,ADDR Ps
@@ -283,9 +279,22 @@ WndProc proc hWin   :DWORD,
 
 
     .elseif uMsg == WM_CREATE
+
         ; carrega as sprites
         invoke LoadBitmap, hInstance, SPRITESHEET_RESOURCE_ID
         mov colors_spriteset, eax
+    
+        
+        ;===================================
+        ; Aleatorizar o vetor de cores
+        ;===================================
+        invoke RestartGame
+     
+        ; Inicializa a thread
+        invoke CreateEvent, NULL, FALSE, FALSE, NULL
+        mov    hEventStart, eax
+        mov    eax, OFFSET ThreadProc
+        invoke CreateThread, NULL, NULL, eax, NULL, NORMAL_PRIORITY_CLASS, ADDR ThreadID
 
     .elseif uMsg == WM_CLOSE
 
@@ -295,7 +304,6 @@ WndProc proc hWin   :DWORD,
     .endif
 
     invoke DefWindowProc,hWin,uMsg,wParam,lParam
-
     ret
 
 WndProc endp
@@ -303,11 +311,6 @@ WndProc endp
 ; ########################################################################
 
 TopXY proc wDim:DWORD, sDim:DWORD
-
-    ; ----------------------------------------------------
-    ; This procedure calculates the top X & Y co-ordinates
-    ; for the CreateWindowEx call in the WinMain procedure
-    ; ----------------------------------------------------
 
     shr sDim, 1      ; divide screen dimension by 2
     shr wDim, 1      ; divide window dimension by 2
@@ -341,21 +344,20 @@ GetSpriteFromMousePos endp
 ; ########################################################################
 
 RestartGame proc
-    mov currentIndex, 0 ; reinicia a posição no vetor de cores
+    mov currentIndex, 1 ; reinicia a posição no vetor de cores
+    mov drawingIndex, 0
+    mov acceptClick, 0
 
     mov ebx, 0 ; ebx contém a posição atual de randomização
 
     .while ebx < 256 ; randomiza cada um dos números
-        invoke Random, 3 ; coloca em eax um valor aleatório de 0 a 3
+        invoke Random, 4 ; coloca em eax um valor aleatório de 0 a 3
         inc eax ; eax contém agora um valor aleatório de 1 a 4
         
         mov colors[ebx], eax
 
         inc ebx
     .endw
-
-    invoke ShowColors
-
     ret
 RestartGame endp
 
@@ -365,19 +367,15 @@ ShowColors proc
     inc currentIndex
     mov ecx, 0 ; indice atual
 
-    mov showingColors, 1
-    mov acceptClick, 0
+    .while ecx < currentIndex
+        mov ebx, colors[ecx]
+        mov currentSprite, ebx
 
-    ;.while ecx < currentIndex
-    ;    mov ebx, colors[ecx]
-    ;    mov currentSprite, ebx
+        invoke InvalidateRect,hWnd,NULL,TRUE
+        invoke Sleep, PC_DELAY_TIME
 
-    ;    invoke InvalidateRect,hWnd,NULL,TRUE
-    ;    invoke Sleep, PC_DELAY_TIME
-
-    ;    inc ecx
-    ;.endw
-
+        inc ecx
+    .endw
 
     ret
 ShowColors endp
@@ -398,37 +396,51 @@ Random endp
 
 ; ########################################################################
 
-ThreadProc proc USES ecx PARAM:dword
-
-    .if showingColors != 0 ; se estiver mostrando o desafio
-        mov ecx, 0
-        mov currentIndex, 1
-        invoke WaitForSingleObject, hEventStart, 500
+ThreadProc proc USES ebx param:DWORD
+    .if acceptClick == 0
+        invoke WaitForSingleObject, hEventStart, 200
         .if eax == WAIT_TIMEOUT
-            .if ecx < currentIndex
             ;invoke MessageBox,hWnd,NULL,ADDR szDisplayName,MB_OK
+            mov ecx, drawingIndex
+            .if ecx < 256
                 mov ebx, colors[ecx]
                 mov currentSprite, ebx
-
-                inc ecx
-                invoke  SendMessage, hWnd, WM_FINISH, NULL, NULL
+                ;add ebx, 48
+                ;mov szDisplayName[0], bl
+                ;invoke MessageBox,hWnd,NULL,ADDR szDisplayName,MB_OK
+                ;invoke InvalidateRect, hWnd, NULL, TRUE
+                invoke SendMessage, hWnd, WM_FINISH, NULL, NULL
+                inc drawingIndex
             .ELSE
-                mov showingColors, 0
-                mov acceptClick, 1
+            ;invoke MessageBox,hWnd,NULL,ADDR szDisplayName,MB_OK
+                mov drawingIndex, 0
+                inc currentIndex
                 mov currentSprite, 0
-                invoke  SendMessage, hWnd, WM_FINISH, NULL, NULL
+                mov acceptClick, 1
+                ;invoke InvalidateRect, hWnd, NULL, TRUE
+                invoke SendMessage, hWnd, WM_FINISH, NULL, NULL
+            ;invoke MessageBox,hWnd,NULL,ADDR szDisplayName,MB_OK
             .endif
         .endif
-    ;.ELSE
-
+    .ELSE
+        invoke WaitForSingleObject, hEventStart, 100
+        .if eax == WAIT_TIMEOUT
+            .if clickHandled == 0
+                mov ebx, currentIndex
+                dec ebx
+                .if drawingIndex < ebx
+                .ELSE
+                .endif
+            .endif
+            ;invoke MessageBox,hWnd,NULL,ADDR szDisplayName,MB_OK
+        .endif
     .endif
+    
+    ;invoke SendMessage, hWnd, WM_FINISH, NULL, NULL
 
-    ;invoke  SendMessage, hWnd, WM_FINISH, NULL, NULL
-
-    ;invoke MessageBox,hWnd,NULL,ADDR szDisplayName,MB_OK
     jmp ThreadProc
     
-    invoke MessageBox,hWnd,NULL,ADDR szDisplayName,MB_OK
+            invoke MessageBox,hWnd,NULL,ADDR szDisplayName,MB_OK
     ret
 ThreadProc endp
 
